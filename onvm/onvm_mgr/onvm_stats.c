@@ -114,6 +114,9 @@ onvm_stats_truncate(void);
 static void
 onvm_json_reset_objects(void);
 
+static double
+timeval_to_double(struct timeval t);
+
 /*********************Stats Output Streams************************************/
 
 static FILE *stats_out;
@@ -508,7 +511,8 @@ onvm_stats_display_nfs(unsigned difftime, uint8_t verbosity_level) {
                 } else {
                         fprintf(stats_out, ONVM_STATS_REG_CONTENT,
                                 nfs[i].tag, nfs[i].instance_id, nfs[i].service_id, nfs[i].thread_info.core,
-                                rx_pps, tx_pps, rx_drop, tx_drop, act_out, act_tonf, act_drop);
+                                rx_pps, tx_pps, rx_drop, tx_drop, act_out, act_tonf, act_drop,
+                                timeval_to_double(nfs[i].resource_usage.time_usage_delta));
                 }
                 /* Only print this information out if we haven't already printed it to the console above */
                 if (stats_out != stdout && stats_out != stderr) {
@@ -644,4 +648,9 @@ onvm_json_reset_objects(void) {
         cJSON_AddItemToObject(onvm_json_root, ONVM_JSON_PORT_STATS_KEY,
                               onvm_json_port_stats_obj = cJSON_CreateObject());
         cJSON_AddItemToObject(onvm_json_root, ONVM_JSON_NF_STATS_KEY, onvm_json_nf_stats_obj = cJSON_CreateObject());
+}
+
+static double
+timeval_to_double(struct timeval t) {
+        return (double)t.tv_sec + ((double)t.tv_usec / 1.0e6);
 }

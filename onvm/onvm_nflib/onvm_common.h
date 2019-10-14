@@ -53,6 +53,8 @@
 #include <signal.h>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
+#include <sys/resource.h>
+#include <sys/time.h>
 
 #include "onvm_config_common.h"
 #include "onvm_msg_common.h"
@@ -321,6 +323,13 @@ struct onvm_nf {
                 /* Mutex for NF sem_wait */
                 sem_t *nf_mutex;
         } shared_core;
+
+        struct {
+                long last_update; 
+                struct rusage last_rusage;
+                struct rusage rusage;
+                struct timeval time_usage_delta;
+        } resource_usage;
 };
 
 /*
