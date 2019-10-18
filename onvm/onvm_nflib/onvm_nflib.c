@@ -560,7 +560,7 @@ onvm_nflib_thread_main_loop(void *arg) {
 
         start_time = rte_get_tsc_cycles();
         for (;rte_atomic16_read(&nf_local_ctx->keep_running) && rte_atomic16_read(&main_nf_local_ctx->keep_running);) {
-                onvm_rusage_update(&nf);
+                onvm_rusage_update(nf);
 
                 /* Possibly sleep if in shared core mode, otherwise continue */
                 if (ONVM_NF_SHARE_CORES) {

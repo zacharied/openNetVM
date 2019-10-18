@@ -329,6 +329,9 @@ struct onvm_nf {
                 struct rusage last_rusage;
                 struct rusage rusage;
                 struct timeval time_usage_delta;
+
+                // In the range [0, 1], indicates total CPU usage.
+                double cpu_time_proportion;
         } resource_usage;
 };
 
