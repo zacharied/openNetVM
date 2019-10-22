@@ -832,6 +832,22 @@ onvm_nflib_get_default_chain(void) {
         return default_chain;
 }
 
+void
+onvm_nflib_fork(void) {
+        // TODO Obviously this whole function needs cleanup & error handling.
+        // I'm not entirely sure why we need to manually assign the service ID.
+        // Also not sure why we need three "--" arguments but that's whatever.
+        // I would like there to be a way to marshal these spawned process, or designate the first process as the "parent"
+        //  or something like that.
+        char *cwd = getcwd(NULL, 64);
+        if (fork() == 0) {
+                int err = execl(strcat(cwd, "/go.sh"), "--", "--", "-r", "2", "--", "2", "-d", "1", NULL);
+                printf("%d %d\n", err, errno);
+        } else {
+                printf("Forked to %s\n", cwd);
+        }
+}
+
 /******************************Helper functions*******************************/
 
 static int
