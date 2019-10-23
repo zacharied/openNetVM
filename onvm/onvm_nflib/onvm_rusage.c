@@ -8,14 +8,15 @@ void onvm_rusage_update(struct onvm_nf *nf) {
         clock_gettime(CLOCK_REALTIME, &time);
         long t = (long)time.tv_sec + round(time.tv_nsec / 1.0e9);
 
-        if (t - nf->resource_usage.last_update >= RUSAGE_UPDATE_INTERVAL) {
+        long update_interval = t - nf->resource_usage.last_update;
+
+        if (update_interval >= RUSAGE_UPDATE_INTERVAL) {
                 nf->resource_usage.last_rusage = nf->resource_usage.rusage;
-                getrusage(RUSAGE_THREAD, &nf->resource_usage.rusage);
+                getrusage(RUSAGE_SELF, &nf->resource_usage.rusage);
                 nf->resource_usage.last_update = t;
                 nf->resource_usage.time_usage_delta = time_usage_delta(nf);
                 nf->resource_usage.cpu_time_proportion = 
-                    (double)RUSAGE_UPDATE_INTERVAL / timeval_to_double(nf->resource_usage.time_usage_delta);
-                printf("%ld\n", nf->resource_usage.last_rusage.ru_utime.tv_usec);
+                    timeval_to_double(nf->resource_usage.time_usage_delta) / (double)update_interval;
         }
 }
 

@@ -67,7 +67,7 @@
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 
-#define NF_TAG "speed_tester"
+#define NF_TAG "fork_tester"
 
 #define PKTMBUF_POOL_NAME "MProc_pktmbuf_pool"
 #define PKT_READ_SIZE ((uint16_t)32)
@@ -78,8 +78,7 @@
 #define DEFAULT_LAT_PKT_NUM 16
 #define MAX_PKT_NUM NF_QUEUE_RINGSIZE
 
-static uint32_t fork_delay = 10000000;
-static uint16_t destination;
+#define MAX_PRIMES_NUM 50000
 
 /*user defined packet size and destination mac address
 *size defaults to ethernet header length
@@ -94,8 +93,6 @@ static uint32_t packet_number = 0;
 
 /* Variables for measuring packet latency */
 static uint8_t measure_latency = 0;
-static uint32_t latency_packets = 0;
-static uint64_t total_latency = 0;
 
 /*
  * Variables needed to replay a pcap file
@@ -103,9 +100,6 @@ static uint64_t total_latency = 0;
 char *pcap_filename = NULL;
 
 static int fork_flag = 0;
-
-// TODO Remove me
-int i = 0;
 
 void
 nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
@@ -145,17 +139,13 @@ usage(const char *progname) {
  */
 static int
 parse_app_args(int argc, char *argv[], const char *progname) {
-        int c, i, count, dst_flag = 0;
+        int c, i, count = 0;
         int values[ETHER_ADDR_LEN];
 
-        while ((c = getopt(argc, argv, "fd:s:m:o:c:l")) != -1) {
+        while ((c = getopt(argc, argv, "fs:m:o:c:l")) != -1) {
                 switch (c) {
                         case 'f':
                                 fork_flag = 1;
-                                break;
-                        case 'd':
-                                destination = strtoul(optarg, NULL, 10);
-                                dst_flag = 1;
                                 break;
                         case 's':
                                 packet_size = strtoul(optarg, NULL, 10);
@@ -217,18 +207,14 @@ parse_app_args(int argc, char *argv[], const char *progname) {
                 }
         }
 
-        if (!dst_flag) {
-                RTE_LOG(INFO, APP, "Speed tester NF requires a destination NF with the -d flag.\n");
-                return -1;
-        }
-
         return optind;
 }
 
+__attribute__((unused))
 static void
 do_fork(void) {
         static int has_split = 0;
-        if (!has_split && i <= 1) {
+        if (!has_split) {
             printf("Forking\n");
             has_split = 1;
             onvm_nflib_fork();
@@ -236,159 +222,59 @@ do_fork(void) {
 }
 
 static int
-packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
+packet_handler(__attribute__((unused)) struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
-        static uint32_t counter = 0;
-        if (counter++ == fork_delay && fork_flag) {
-                do_fork();
-                counter = 0;
-        }
+        static int has_forked = 0;
 
-        if (ONVM_CHECK_BIT(meta->flags, SPEED_TESTER_BIT)) {
-                /* one of our fake pkts to forward */
-                meta->destination = destination;
-                meta->action = ONVM_NF_ACTION_TONF;
-                if (measure_latency && ONVM_CHECK_BIT(meta->flags, LATENCY_BIT)) {
-                        uint64_t curtime = rte_get_tsc_cycles();
-                        uint64_t *oldtime = (uint64_t *)(rte_pktmbuf_mtod(pkt, uint8_t *) + packet_size);
-                        if (*oldtime != 0) {
-                                total_latency += curtime - *oldtime;
-                                latency_packets++;
-                        }
-                        *oldtime = curtime;
-                }
-        } else {
-                /* Drop real incoming packets */
+        if (!ONVM_CHECK_BIT(meta->flags, SPEED_TESTER_BIT)) {
                 meta->action = ONVM_NF_ACTION_DROP;
+                return 0;
         }
+
+        if (fork_flag && nf_local_ctx->nf->resource_usage.cpu_time_proportion > 0.05 && !has_forked) {
+                has_forked = 1;
+                printf("Forking...\n");
+                onvm_nflib_fork();
+        }
+        
+        if (has_forked) {
+                static int my_turn = 0;
+                my_turn = !my_turn;
+                if (!my_turn) { 
+                        meta->action = ONVM_NF_ACTION_TONF;
+                        meta->destination = 2; 
+                        return 0;
+                }
+        }
+
+        int i, num = 0, primes = 0;
+        static int max_num = 5000;
+        if (!fork_flag) {
+                printf("(Child) ");
+        }
+        printf("Parsing a %d MB file...", max_num);
+        while (num <= max_num) { 
+                i = 2; 
+                while (i <= num) { 
+                        if(num % i == 0)
+                                break;
+                        i++; 
+                }
+                if (i == num)
+                        primes++;
+
+                num++;
+        }
+        max_num = (max_num > MAX_PRIMES_NUM) ? max_num : max_num + 5000;
+        printf(" Done!\n");
+
+        // Hack to stop compiler from optimizing.
+        meta->src = primes;
+
+        meta->action = ONVM_NF_ACTION_TONF;
+        meta->destination = 3;
+
         return 0;
-}
-
-/*
- * Generates fake packets or loads them from a pcap file
- */
-void
-nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
-        uint32_t i;
-        uint32_t pkts_generated;
-        struct rte_mempool *pktmbuf_pool;
-
-        pkts_generated = 0;
-        pktmbuf_pool = rte_mempool_lookup(PKTMBUF_POOL_NAME);
-        if (pktmbuf_pool == NULL) {
-                onvm_nflib_stop(nf_local_ctx);
-                rte_exit(EXIT_FAILURE, "Cannot find mbuf pool!\n");
-        }
-
-#ifdef LIBPCAP
-        struct rte_mbuf *pkt;
-        pcap_t *pcap;
-        const u_char *packet;
-        struct pcap_pkthdr header;
-        char errbuf[PCAP_ERRBUF_SIZE];
-
-        if (pcap_filename != NULL) {
-                printf("Replaying %s pcap file\n", pcap_filename);
-
-                pcap = pcap_open_offline(pcap_filename, errbuf);
-                if (pcap == NULL) {
-                        fprintf(stderr, "Error reading pcap file: %s\n", errbuf);
-                        onvm_nflib_stop(nf_local_ctx);
-                        rte_exit(EXIT_FAILURE, "Cannot open pcap file\n");
-                }
-
-                packet_number = (use_custom_pkt_count ? packet_number : MAX_PKT_NUM);
-                struct rte_mbuf *pkts[packet_number];
-
-                i = 0;
-
-                while (((packet = pcap_next(pcap, &header)) != NULL) && (i < packet_number)) {
-                        struct onvm_pkt_meta *pmeta;
-                        struct onvm_ft_ipv4_5tuple key;
-
-                        pkt = rte_pktmbuf_alloc(pktmbuf_pool);
-                        if (pkt == NULL)
-                                break;
-
-                        pkt->pkt_len = header.caplen;
-                        pkt->data_len = header.caplen;
-
-                        /* Copy the packet into the rte_mbuf data section */
-                        rte_memcpy(rte_pktmbuf_mtod(pkt, char *), packet, header.caplen);
-
-                        pmeta = onvm_get_pkt_meta(pkt);
-                        pmeta->destination = destination;
-                        pmeta->action = ONVM_NF_ACTION_TONF;
-                        pmeta->flags = ONVM_SET_BIT(0, SPEED_TESTER_BIT);
-
-                        onvm_ft_fill_key(&key, pkt);
-                        pkt->hash.rss = onvm_softrss(&key);
-
-                        /* Add packet to batch, and update counter */
-                        pkts[i++] = pkt;
-                        pkts_generated++;
-                }
-                onvm_nflib_return_pkt_bulk(nf_local_ctx->nf, pkts, pkts_generated);
-        } else {
-#endif
-                /*  use default number of initial packets if -c has not been used */
-                packet_number = (use_custom_pkt_count ? packet_number : DEFAULT_PKT_NUM);
-                struct rte_mbuf *pkts[packet_number];
-
-                printf("Creating %u packets to send to %u\n", packet_number, destination);
-
-                for (i = 0; i < packet_number; ++i) {
-                        struct onvm_pkt_meta *pmeta;
-                        struct ether_hdr *ehdr;
-                        int j;
-
-                        struct rte_mbuf *pkt = rte_pktmbuf_alloc(pktmbuf_pool);
-                        if (pkt == NULL) {
-                                printf("Failed to allocate packets\n");
-                                break;
-                        }
-
-                        /*set up ether header and set new packet size*/
-                        ehdr = (struct ether_hdr *)rte_pktmbuf_append(pkt, packet_size);
-
-                        /*using manager mac addr for source
-                        *using input string for dest addr
-                        */
-                        rte_eth_macaddr_get(0, &ehdr->s_addr);
-                        for (j = 0; j < ETHER_ADDR_LEN; ++j) {
-                                ehdr->d_addr.addr_bytes[j] = d_addr_bytes[j];
-                        }
-                        ehdr->ether_type = LOCAL_EXPERIMENTAL_ETHER;
-
-                        pmeta = onvm_get_pkt_meta(pkt);
-                        pmeta->destination = destination;
-                        pmeta->action = ONVM_NF_ACTION_TONF;
-                        pmeta->flags = ONVM_SET_BIT(0, SPEED_TESTER_BIT);
-                        pkt->hash.rss = i;
-                        pkt->port = 0;
-
-                        if (measure_latency &&
-                            (packet_number < DEFAULT_LAT_PKT_NUM || i % (packet_number / DEFAULT_LAT_PKT_NUM) == 0)) {
-                                pmeta->flags |= ONVM_SET_BIT(0, LATENCY_BIT);
-                                uint64_t *ts = (uint64_t *)rte_pktmbuf_append(pkt, sizeof(uint64_t));
-                                *ts = 0;
-                        }
-
-                        /* New packet generated successfully */
-                        pkts[i] = pkt;
-                        pkts_generated++;
-                }
-                onvm_nflib_return_pkt_bulk(nf_local_ctx->nf, pkts, pkts_generated);
-#ifdef LIBPCAP
-        }
-#endif
-        /* Exit if packets were unexpectedly not created */
-        if (pkts_generated == 0 && packet_number > 0) {
-                onvm_nflib_stop(nf_local_ctx);
-                rte_exit(EXIT_FAILURE, "Failed to create packets\n");
-        }
-
-        packet_number = pkts_generated;
 }
 
 int
@@ -398,7 +284,6 @@ main(int argc, char *argv[]) {
         int arg_offset;
 
         const char *progname = argv[0];
-        i = atoi(argv[1]);
 
         nf_local_ctx = onvm_nflib_init_nf_local_ctx();
 
@@ -406,8 +291,7 @@ main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
-        nf_function_table->setup = &nf_setup;
-
+//        nf_function_table->setup = &nf_setup;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 printf("Service ID: %d\n", nf_local_ctx->nf->service_id);

@@ -6,7 +6,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
-#define RUSAGE_UPDATE_INTERVAL 2
+#define RUSAGE_UPDATE_INTERVAL 0.1
 
 /* Update the NF's rusage if the interval has been passed. */
 void onvm_rusage_update(struct onvm_nf *nf);

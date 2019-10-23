@@ -64,6 +64,7 @@
 #include "onvm_includes.h"
 #include "onvm_nflib.h"
 #include "onvm_sc_common.h"
+#include "onvm_common.h"
 #include "onvm_rusage.h"
 
 /**********************************Macros*************************************/
@@ -841,10 +842,12 @@ onvm_nflib_fork(void) {
         //  or something like that.
         char *cwd = getcwd(NULL, 64);
         if (fork() == 0) {
-                int err = execl(strcat(cwd, "/go.sh"), "--", "--", "-r", "2", "--", "2", "-d", "1", NULL);
+                int err = execl(strcat(cwd, "/go.sh"), "--", "--", "-n", "60", "-r", "2", "--", NULL);
                 printf("%d %d\n", err, errno);
         } else {
                 printf("Forked to %s\n", cwd);
+                sleep(3);
+                printf("Done waiting.\n");
         }
 }
 
