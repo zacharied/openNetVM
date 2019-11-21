@@ -52,6 +52,9 @@
 
 #include <getopt.h>
 #include <signal.h>
+#include <math.h>
+#include <time.h>
+#include <sys/resource.h>
 
 /******************************DPDK libraries*********************************/
 #include "rte_malloc.h"
@@ -61,6 +64,7 @@
 #include "onvm_includes.h"
 #include "onvm_nflib.h"
 #include "onvm_sc_common.h"
+#include "onvm_rusage.h"
 
 /**********************************Macros*************************************/
 
@@ -412,6 +416,7 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, struct onvm_nf_local
         return retval_final;
 }
 
+//ZACH
 int
 onvm_nflib_start_nf(struct onvm_nf_local_ctx *nf_local_ctx, struct onvm_nf_init_cfg *nf_init_cfg) {
         struct onvm_nf_msg *startup_msg;
@@ -592,6 +597,8 @@ onvm_nflib_thread_main_loop(void *arg) {
 
         start_time = rte_get_tsc_cycles();
         for (;rte_atomic16_read(&nf_local_ctx->keep_running) && rte_atomic16_read(&main_nf_local_ctx->keep_running);) {
+                onvm_rusage_update(nf);
+
                 /* Possibly sleep if in shared core mode, otherwise continue */
                 if (ONVM_NF_SHARE_CORES) {
                         if (unlikely(rte_ring_count(nf->rx_q) == 0) && likely(rte_ring_count(nf->msg_q) == 0)) {
@@ -612,6 +619,7 @@ onvm_nflib_thread_main_loop(void *arg) {
                 onvm_pkt_flush_all_nfs(nf->nf_tx_mgr, nf);
 
                 onvm_nflib_dequeue_messages(nf_local_ctx);
+
                 if (nf->function_table->user_actions != ONVM_NO_CALLBACK) {
                         rte_atomic16_set(&nf_local_ctx->keep_running,
                                          !(*nf->function_table->user_actions)(nf_local_ctx) &&
@@ -659,6 +667,9 @@ int
 onvm_nflib_nf_ready(struct onvm_nf *nf) {
         struct onvm_nf_msg *startup_msg;
         int ret;
+
+        nf->resource_usage.last_update = 0;
+        memset(&nf->resource_usage.rusage, 0, sizeof(struct rusage));
 
         /* Put this NF's info struct onto queue for manager to process startup */
         ret = rte_mempool_get(nf_msg_pool, (void **)(&startup_msg));
@@ -856,6 +867,22 @@ onvm_nflib_inherit_parent_config(struct onvm_nf *parent, void *data) {
 struct onvm_service_chain *
 onvm_nflib_get_default_chain(void) {
         return default_chain;
+}
+
+void
+onvm_nflib_fork(void) {
+        // TODO Obviously this whole function needs cleanup & error handling.
+        // I'm not entirely sure why we need to manually assign the service ID.
+        // Also not sure why we need three "--" arguments but that's whatever.
+        // I would like there to be a way to marshal these spawned process, or designate the first process as the "parent"
+        //  or something like that.
+        char *cwd = getcwd(NULL, 64);
+        if (fork() == 0) {
+                int err = execl(strcat(cwd, "/go.sh"), "--", "--", "-r", "2", "--", "2", "-d", "1", NULL);
+                printf("%d %d\n", err, errno);
+        } else {
+                printf("Forked to %s\n", cwd);
+        }
 }
 
 /******************************Helper functions*******************************/
