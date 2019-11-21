@@ -71,6 +71,7 @@ struct tcp_lb_maps {
         struct rte_hash *chain_connections; // Int to int
         struct chain_meta **chain_meta_list;
         int list_size;
+	int total_connections;
 };
 
 struct chain_meta {
@@ -180,13 +181,6 @@ callback_handler(__attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx)
         return 0;
 }
 
-static int
-packet_handler2(__attribute__((unused)) struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
-                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
-        meta->action = ONVM_NF_ACTION_OUT;
-        meta->destination = 0;
-        return 0;
-}
 
 
 static int
@@ -200,7 +194,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         struct chain_meta *lkup_chain_meta;
         int min, i, index;
         long ip_addr_long;
-        int scaled_nfs;
+        int scaled_nfs, next_id;
 
         struct tcp_hdr *tcp_hdr;
         struct ipv4_hdr *ip_hdr;
@@ -243,6 +237,8 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                 if (min >= MAX_CONNECTIONS) {
                         printf("Hit the maximum amount of connections, scaling\n");
                         lkup_chain_meta->scaled_nfs++;
+			next_id = ++tcp_lb_hash_maps->total_connections;
+			onvm_nflib_fork("/home/dennisafa/openNetVM/examples/simple_forward", 2, next_id);  
                         //lkup_chain_meta->scaled_nfs
                         // TODO: Scale here
                         /* Each IP gets meta_chain index in bucket, each IP gets list of NF's it may scale to.
@@ -252,26 +248,10 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                          This could be a message sent to other process that scales for us
                          */
 
-                        struct onvm_nf_scale_info *scale_info = onvm_nflib_get_empty_scaling_config(nf_local_ctx->nf);
-                        /* Sets service id of child */
-                        scale_info->nf_init_cfg->service_id = lkup_chain_meta->scaled_nfs + 2;
-                        scale_info->function_table = onvm_nflib_init_nf_function_table();
-                        scale_info->nf_init_cfg->tag = scale_tag;
-                        //scale_info->nf_init_cfg->core = 4;
-                        /* Run the setup function to generate packets */
-                        //scale_info->function_table->setup = &nf_setup;
-                        /* Custom packet handler */
-                        scale_info->function_table->pkt_handler = &packet_handler2;
-                        /* Spawn the child */
-                        if (onvm_nflib_scale(scale_info) == 0)
-                                RTE_LOG(INFO, APP, "Spawning child SID %u; with packet_handler_fwd packet function\n",
-                                        scale_info->nf_init_cfg->service_id);
-                        else
-                                rte_exit(EXIT_FAILURE, "Can't spawn child\n");
                         scaled_nfs = lkup_chain_meta->scaled_nfs; // place holder
                         printf("Scaled nfs val: %d\n", scaled_nfs);
                         lkup_chain_meta->chain_id[scaled_nfs - 1] =
-                                lkup_chain_meta->scaled_nfs + 2; // first two are mtcp and balancer
+                                next_id; // first two are mtcp and balancer
 
                         printf("Meta dest ID %d\n", lkup_chain_meta->dest_id);
                         printf("Meta dest ID %d\n", lkup_chain_meta->dest_id);
@@ -374,6 +354,7 @@ static int init_lb_maps(struct onvm_nf *nf) {
         strncpy(scale_tag, scale_tag_cpy, 20);
 
         tcp_lb_hash_maps = rte_malloc(NULL, sizeof(struct tcp_lb_maps), 0);
+	tcp_lb_hash_maps->total_connections = 2;
         tcp_lb_hash_maps->chain_connections = create_rtehashmap(chain_to_connections,
                                                                 MAX_CHAINS); // 10 service chains (for now)
         tcp_lb_hash_maps->ip_chain = create_rtehashmap(ip_map, 1000); // 1000 different IP addresses
@@ -392,22 +373,6 @@ static int init_lb_maps(struct onvm_nf *nf) {
         }
         //start_chain = rte_malloc(NULL, sizeof(struct chain_meta), 0);
 
-        struct onvm_nf_scale_info *scale_info = onvm_nflib_get_empty_scaling_config(nf);
-        /* Sets service id of child */
-        scale_info->nf_init_cfg->service_id = 3;
-        scale_info->function_table = onvm_nflib_init_nf_function_table();
-        scale_info->nf_init_cfg->tag = scale_tag;
-        //scale_info->nf_init_cfg->core = 4;
-        /* Run the setup function to generate packets */
-        //scale_info->function_table->setup = &nf_setup;
-        /* Custom packet handler */
-        scale_info->function_table->pkt_handler = &packet_handler2;
-        /* Spawn the child */
-        if (onvm_nflib_scale(scale_info) == 0)
-                RTE_LOG(INFO, APP, "Spawning child SID %u; with packet_handler_fwd packet function\n",
-                        scale_info->nf_init_cfg->service_id);
-        else
-                rte_exit(EXIT_FAILURE, "Can't spawn child\n");
 
 
 
