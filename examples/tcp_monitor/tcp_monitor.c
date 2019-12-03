@@ -214,6 +214,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         ip_hdr = onvm_pkt_ipv4_hdr(pkt);
         //onvm_pkt_print_ipv4(ip_hdr);
         ip_addr_long = (long) ip_hdr->src_addr;
+	static int already_spawned = 0;
         // Check if this IP is attached to service chain
         // If new IP comes in, map to service chain with least amount of connections. First one is default to 3
         if (rte_hash_lookup_data(ip_chain, &ip_addr_long, &chain_meta_data) < 0) {
@@ -234,11 +235,11 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         } else {
                 lkup_chain_meta = (struct chain_meta *) chain_meta_data;
                 min = lkup_chain_meta->num_connections / lkup_chain_meta->scaled_nfs;
-                if (min >= MAX_CONNECTIONS) {
+                if (min >= MAX_CONNECTIONS && already_spawned == 0) {
                         printf("Hit the maximum amount of connections, scaling\n");
                         lkup_chain_meta->scaled_nfs++;
 			next_id = ++tcp_lb_hash_maps->total_connections;
-			onvm_nflib_fork("/home/dennisafa/openNetVM/examples/simple_forward", 2, next_id);  
+			onvm_nflib_fork("/users/dennisa/openNetVM/examples/simple_forward", 2, next_id);  
                         //lkup_chain_meta->scaled_nfs
                         // TODO: Scale here
                         /* Each IP gets meta_chain index in bucket, each IP gets list of NF's it may scale to.
@@ -251,11 +252,12 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                         scaled_nfs = lkup_chain_meta->scaled_nfs; // place holder
                         printf("Scaled nfs val: %d\n", scaled_nfs);
                         lkup_chain_meta->chain_id[scaled_nfs - 1] =
-                                next_id; // first two are mtcp and balancer
+                                4; // first two are mtcp and balancer
 
                         printf("Meta dest ID %d\n", lkup_chain_meta->dest_id);
                         printf("Meta dest ID %d\n", lkup_chain_meta->dest_id);
                         lkup_chain_meta->num_connections--; // necessary because it will keep looping otherwise
+			already_spawned = 1;
                 }
 
         }

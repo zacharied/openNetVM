@@ -886,8 +886,8 @@ onvm_nflib_fork(const char *nf_app_dir, int host_sid, int sid) {
 		}
 		
 		char *_nf_app_dir = strdup(nf_app_dir);
-                int err = execl(strcat(_nf_app_dir, "/go.sh"), "--", "--", "-r", sid_str, "--", sid_str, "-d", host_sid_str, NULL);
-
+		printf("Executing %s\n", _nf_app_dir);
+                int err = execl("/users/dennisa/openNetVM/examples/start_nf.sh", "simple_forward", "simple_forward", "-l", "7", "--", "-m", "-r", "4", "--", "-d", "2",NULL);
 		// If we reach here, an error has occurred.
 		printf("fork() returned an error: %d\n", err);
 		return -1;
