@@ -869,20 +869,33 @@ onvm_nflib_get_default_chain(void) {
         return default_chain;
 }
 
-void
-onvm_nflib_fork(void) {
-        // TODO Obviously this whole function needs cleanup & error handling.
+int
+onvm_nflib_fork(const char *nf_app_dir, int host_sid, int sid) {
         // I'm not entirely sure why we need to manually assign the service ID.
         // Also not sure why we need three "--" arguments but that's whatever.
-        // I would like there to be a way to marshal these spawned process, or designate the first process as the "parent"
-        //  or something like that.
-        char *cwd = getcwd(NULL, 64);
         if (fork() == 0) {
-                int err = execl(strcat(cwd, "/go.sh"), "--", "--", "-r", "2", "--", "2", "-d", "1", NULL);
-                printf("%d %d\n", err, errno);
+		int bufsz = 8;
+		char sid_str[bufsz];
+		char host_sid_str[bufsz];
+		if (snprintf(sid_str, bufsz, "%d", sid) >= bufsz) {
+			printf("Fork error: SID has too many digits!\n");
+			return -1;
+		} else if (snprintf(host_sid_str, bufsz, "%d", host_sid) >= bufsz) {
+			printf("Fork error: host SID has too many digits!\n");
+			return -1;
+		}
+		
+		char *_nf_app_dir = strdup(nf_app_dir);
+                int err = execl(strcat(_nf_app_dir, "/go.sh"), "--", "--", "-r", sid_str, "--", sid_str, "-d", host_sid_str, NULL);
+
+		// If we reach here, an error has occurred.
+		printf("fork() returned an error: %d\n", err);
+		return -1;
         } else {
-                printf("Forked to %s\n", cwd);
+                printf("Spawned a new instance of the app at \"%s\".\n", nf_app_dir);
         }
+
+	return 0;
 }
 
 /******************************Helper functions*******************************/

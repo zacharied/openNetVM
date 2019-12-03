@@ -290,7 +290,7 @@ onvm_nflib_get_default_chain(void);
 struct onvm_configuration *
 onvm_nflib_get_onvm_config(void);
 
-void
-onvm_nflib_fork(void);
+int
+onvm_nflib_fork(const char *nf_app_dir, int host_sid, int sid);
 
 #endif // _ONVM_NFLIB_H_
