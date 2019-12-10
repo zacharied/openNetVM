@@ -8,7 +8,9 @@ export type OnvmNfData = {|
   RX_Drop_Rate: number,
   instance_id: number,
   service_id: number,
-  core: number
+  core: number,
+  Rusage: Object,
+  CUP_Usage_Proportion: number
 |};
 
 export type ColumnRestoreData = Array<Array<string | number>>;

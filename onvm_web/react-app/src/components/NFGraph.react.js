@@ -42,18 +42,20 @@ class NFGraph extends React.PureComponent<Props, State> {
     graphData: {
       xs: {
         tx_pps: `${this.props.nfLabel}x1`,
-        rx_pps: `${this.props.nfLabel}x1`
+        rx_pps: `${this.props.nfLabel}x1`,
+	cpu: `${this.props.nfLabel}x1`
       },
       names: {
         tx_pps: "TX PPS",
-        rx_pps: "RX PPS"
+        rx_pps: "RX PPS",
+	cpu: "CPU Usage"
       },
       empty: {
         label: {
           text: "No Data to Display"
         }
       },
-      columns: [[`${this.props.nfLabel}x1`], ["tx_pps"], ["rx_pps"]]
+      columns: [[`${this.props.nfLabel}x1`], ["tx_pps"], ["rx_pps"], ["cpu"]]
     }
   };
 
@@ -70,6 +72,9 @@ class NFGraph extends React.PureComponent<Props, State> {
 
     columns[2].push(data.RX);
     columns[2] = this.trimToSize(columns[2], arrMaxSize);
+
+    columns[3].push(data.CPU_Usage_Proportion);
+    columns[3] = this.trimToSize(columns[3], arrMaxSize);
 
     this.setState({ graphData: graphDataCopy });
   };
