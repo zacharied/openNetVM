@@ -236,6 +236,8 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         } else {
                 lkup_chain_meta = (struct chain_meta *) chain_meta_data;
                 min = lkup_chain_meta->num_connections / lkup_chain_meta->scaled_nfs;
+                printf("Min: %d\n", min);
+                printf("Num connections: %d scaled nfs: %d\n", lkup_chain_meta->num_connections, lkup_chain_meta->scaled_nfs); 
                 if (min >= MAX_CONNECTIONS) {
                         printf("Hit the maximum amount of connections, scaling\n");
                         lkup_chain_meta->scaled_nfs++;
@@ -258,7 +260,6 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
 
                         printf("Meta dest ID %d\n", lkup_chain_meta->dest_id);
                         printf("Meta dest ID %d\n", lkup_chain_meta->dest_id);
-                        lkup_chain_meta->num_connections++; // necessary because it will keep looping otherwise
                 }
 
         }
