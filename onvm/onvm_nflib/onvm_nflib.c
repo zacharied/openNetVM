@@ -741,6 +741,22 @@ onvm_nflib_send_msg_to_nf(uint16_t dest, void *msg_data) {
         return rte_ring_enqueue(nfs[dest].msg_q, (void*)msg);
 }
 
+int 
+onvm_nflib_send_kill_msg(int destid) {
+        int ret;
+        struct onvm_nf_msg *msg;
+
+        ret = rte_mempool_get(nf_msg_pool, (void**)(&msg));
+        if (ret != 0) {
+                RTE_LOG(INFO, APP, "Oh the huge manatee! Unable to allocate msg from pool :(\n");
+                return ret;
+        }
+
+        msg->msg_type = MSG_STOP;
+
+        return rte_ring_enqueue(nfs[destid].msg_q, (void*)msg);
+}
+
 void
 onvm_nflib_stop(struct onvm_nf_local_ctx *nf_local_ctx) {
         if (nf_local_ctx == NULL || nf_local_ctx->nf == NULL || rte_atomic16_read(&nf_local_ctx->nf_stopped) != 0) {
@@ -873,7 +889,9 @@ int
 onvm_nflib_fork(const char *nf_app_dir, int host_sid, int sid) {
         // I'm not entirely sure why we need to manually assign the service ID.
         // Also not sure why we need three "--" arguments but that's whatever.
-        if (fork() == 0) {
+        int new_nf_id;
+        new_nf_id = fork();
+        if (new_nf_id == 0) {
 		int bufsz = 8;
 		char sid_str[bufsz];
 		char host_sid_str[bufsz];
@@ -886,13 +904,15 @@ onvm_nflib_fork(const char *nf_app_dir, int host_sid, int sid) {
 		}
 		
 		char *_nf_app_dir = strdup(nf_app_dir);
-		printf("Executing %s\n", _nf_app_dir);
-                int err = execl("/users/dennisa/openNetVM/examples/start_nf.sh", "simple_forward", "simple_forward", "-l", "7", "--", "-m", "-r", "4", "--", "-d", "2",NULL);
+        printf("%s", _nf_app_dir);
+        //int err = execl("/users/dennisa/openNetVM/examples/start_nf.sh", "simple_forward", "simple_forward", "-l", "7", "--", "-m", "-r", "4", "--", "-d", "2",NULL);
+        int err = execl("/users/dennisa/openNetVM/examples/simple_forward/build/app/simple_forward", "-l", "7", "-n", "3", "--proc-type=secondary", "--", "-r", "4", "--","-d", "1", NULL);
 		// If we reach here, an error has occurred.
 		printf("fork() returned an error: %d\n", err);
 		return -1;
         } else {
                 printf("Spawned a new instance of the app at \"%s\".\n", nf_app_dir);
+                return new_nf_id;
         }
 
 	return 0;
@@ -1090,6 +1110,7 @@ onvm_nflib_start_child(void *arg) {
 void
 onvm_nflib_handle_signal(int sig) {
         struct onvm_nf *nf;
+        printf("Received signal to kill\n");
 
         if (sig != SIGINT && sig != SIGTERM)
                 return;
