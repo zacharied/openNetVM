@@ -191,6 +191,9 @@ onvm_nflib_handle_msg(struct onvm_nf_msg *msg, struct onvm_nf_local_ctx *nf_loca
 int
 onvm_nflib_send_msg_to_nf(uint16_t dest_nf, void *msg_data);
 
+int 
+onvm_nflib_send_kill_msg(int destid);
+
 /**
  * Stop this NF and clean up its memory
  * Sends shutdown message to manager.

@@ -48,6 +48,7 @@
 #include <string.h>
 #include <sys/queue.h>
 #include <unistd.h>
+#include<sys/wait.h> 
 
 #include <rte_common.h>
 #include <rte_cycles.h>
@@ -77,6 +78,7 @@ struct tcp_lb_maps {
 struct chain_meta {
         int num_connections;
         int chain_id[10]; // should be an array of ints
+        pid_t pid_list[10]; // array of the spawned nf's pids to kill
         int dest_id;
         int scaled_nfs; // will represent size of chain_id array
         int num_packets;
@@ -192,7 +194,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         //struct onvm_nf *nf;
 
         struct chain_meta *lkup_chain_meta;
-        int min, i, index;
+        int min, i, index, to_kill;
         long ip_addr_long;
         int scaled_nfs, next_id;
 
@@ -234,11 +236,13 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         } else {
                 lkup_chain_meta = (struct chain_meta *) chain_meta_data;
                 min = lkup_chain_meta->num_connections / lkup_chain_meta->scaled_nfs;
+                printf("Min: %d\n", min);
+                printf("Num connections: %d scaled nfs: %d\n", lkup_chain_meta->num_connections, lkup_chain_meta->scaled_nfs); 
                 if (min >= MAX_CONNECTIONS) {
                         printf("Hit the maximum amount of connections, scaling\n");
                         lkup_chain_meta->scaled_nfs++;
-			next_id = ++tcp_lb_hash_maps->total_connections;
-			onvm_nflib_fork("/home/dennisafa/openNetVM/examples/simple_forward", 2, next_id);  
+			            next_id = ++tcp_lb_hash_maps->total_connections;
+	            		pid_t saved_pid = onvm_nflib_fork("simple_forward", 2, next_id);  
                         //lkup_chain_meta->scaled_nfs
                         // TODO: Scale here
                         /* Each IP gets meta_chain index in bucket, each IP gets list of NF's it may scale to.
@@ -252,10 +256,10 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                         printf("Scaled nfs val: %d\n", scaled_nfs);
                         lkup_chain_meta->chain_id[scaled_nfs - 1] =
                                 next_id; // first two are mtcp and balancer
+                        lkup_chain_meta->pid_list[0] = saved_pid; 
 
                         printf("Meta dest ID %d\n", lkup_chain_meta->dest_id);
                         printf("Meta dest ID %d\n", lkup_chain_meta->dest_id);
-                        lkup_chain_meta->num_connections--; // necessary because it will keep looping otherwise
                 }
 
         }
@@ -271,9 +275,14 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
 
 
         if (flags & 0x1) { // FIN
-                printf("FIN,\n");
+                scaled_nfs = lkup_chain_meta->scaled_nfs;
+                to_kill = lkup_chain_meta->chain_id[scaled_nfs - 1];
+                printf("FIN, killing %d\n", to_kill);
                 lkup_chain_meta->num_connections--;
-                printf("Num connections after FIN: %d\n", lkup_chain_meta->num_connections);
+                lkup_chain_meta->scaled_nfs--;
+                if (onvm_nflib_send_kill_msg(to_kill) != 0) {
+                    printf("Couldn't kill %d\n", to_kill);
+                }
         }
 
 
@@ -284,43 +293,10 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         }
 
         lkup_chain_meta->num_packets++;
-//        if (lkup_chain_meta->num_packets % 2 == 0) {
-//                printf("Sending from NF 0\n");
-//        }
-//        else {
-//                printf("Sending from NF 1\n");
-//        }
-
-
         lkup_chain_meta->dest_id = lkup_chain_meta->chain_id[lkup_chain_meta->num_packets %
                                                              lkup_chain_meta->scaled_nfs];
-//        printf("Value: %d\n", lkup_chain_meta->num_packets % lkup_chain_meta->scaled_nfs);
-//        printf("Other value: %d\n", lkup_chain_meta->chain_id[lkup_chain_meta->num_packets % lkup_chain_meta->scaled_nfs]);
-//        if (lkup_chain_meta->num_packets % 2 == 0) {
-//                meta->destination = 3;
-//        }
-//        else {
-//                meta->destination = 4;
-//        }
-//        if (lkup_chain_meta->dest_id == 0) { // if it's 0 then we're just sending out from the load balancer
-//                meta->action = ONVM_NF_ACTION_OUT;
-//                meta->destination = 0;
-//        }
-//        else {
-//                nf = &nfs[3];
-//                if (!onvm_nf_is_valid(nf)) {
-//                        //printf("Invalid, so sending directly out\n");
-//                        meta->action = ONVM_NF_ACTION_OUT;
-//                        meta->destination = 0;
-//                        return 0;
-//                }
-        //printf("valid, so sending directly out\n");
         meta->action = ONVM_NF_ACTION_TONF; // otherwise we have a scaled nf so send it to that
-        meta->destination = lkup_chain_meta->dest_id;
-        //printf("Sent to NF %d\n", lkup_chain_meta->dest_id);
-//                meta->action = ONVM_NF_ACTION_OUT;
-//                meta->destination = 0;
-
+        meta->destination = lkup_chain_meta->dest_id; 
         usleep(1);
 
         return 0;
@@ -354,7 +330,7 @@ static int init_lb_maps(struct onvm_nf *nf) {
         strncpy(scale_tag, scale_tag_cpy, 20);
 
         tcp_lb_hash_maps = rte_malloc(NULL, sizeof(struct tcp_lb_maps), 0);
-	tcp_lb_hash_maps->total_connections = 2;
+     	tcp_lb_hash_maps->total_connections = 3; 
         tcp_lb_hash_maps->chain_connections = create_rtehashmap(chain_to_connections,
                                                                 MAX_CHAINS); // 10 service chains (for now)
         tcp_lb_hash_maps->ip_chain = create_rtehashmap(ip_map, 1000); // 1000 different IP addresses
@@ -371,11 +347,6 @@ static int init_lb_maps(struct onvm_nf *nf) {
                 tcp_lb_hash_maps->chain_meta_list[i]->num_packets = 0;
                 tcp_lb_hash_maps->chain_meta_list[i]->num_connections = 0;
         }
-        //start_chain = rte_malloc(NULL, sizeof(struct chain_meta), 0);
-
-
-
-
 
         nf->data = (void *) tcp_lb_hash_maps;
         return 0;
