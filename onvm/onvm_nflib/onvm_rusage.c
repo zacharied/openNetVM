@@ -15,7 +15,6 @@ void onvm_rusage_update(struct onvm_nf *nf) {
                 nf->resource_usage.time_usage_delta = time_usage_delta(nf);
                 nf->resource_usage.cpu_time_proportion = 
                     (double)RUSAGE_UPDATE_INTERVAL / timeval_to_double(nf->resource_usage.time_usage_delta);
-                printf("%ld\n", nf->resource_usage.last_rusage.ru_utime.tv_usec);
         }
 }
 
