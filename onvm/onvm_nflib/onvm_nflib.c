@@ -905,7 +905,7 @@ onvm_nflib_fork(const char *nf_app_dir, int host_sid, int sid) {
 		
 		char *_nf_app_dir = strdup(nf_app_dir);
         printf("%s", _nf_app_dir);
-        int err = execl("/users/dennisa/openNetVM/examples/simple_forward/build/app/simple_forward", "-l", "7", "-n", "3", "--proc-type=secondary", "--", "-r", sid_str, "--","-d", "1", NULL);
+        int err = execl("/users/dennisa/openNetVM/examples/simple_forward/build/app/simple_forward", "-n", "3", "--proc-type=secondary", "--", "-r", sid_str, "--","-d", "1", NULL);
 		// If we reach here, an error has occurred.
 		printf("fork() returned an error: %d\n", err);
 		return -1;

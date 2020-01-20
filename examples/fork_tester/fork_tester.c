@@ -78,7 +78,7 @@
 #define DEFAULT_LAT_PKT_NUM 16
 #define MAX_PKT_NUM NF_QUEUE_RINGSIZE
 
-static uint32_t fork_delay = 10000000;
+static uint32_t fork_delay = 10000;
 static uint16_t destination;
 
 /*user defined packet size and destination mac address
