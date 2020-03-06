@@ -3,6 +3,9 @@
 extern struct onvm_nf *nfs;
 
 void onvm_update_rusage(void) {
+        for (int i = 0; i < MAX_NFS; i++)
+                core_rusage[i] = 0.0;
+
         static unsigned long int last_update_time = 0;
 
         struct timespec now;
@@ -38,6 +41,8 @@ void onvm_update_rusage(void) {
                         (double)(nf_usage - nfs[i].resource_usage.last_usage) / (double)last_update_delta;
 
                 nfs[i].resource_usage.last_usage = nf_usage;
+
+                core_rusage[nfs[i].thread_info.core] += nfs[i].resource_usage.cpu_time_proportion;
         }
 
         last_update_time = now_time;

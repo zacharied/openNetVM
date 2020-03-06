@@ -11,4 +11,6 @@
 
 void onvm_update_rusage(void);
 
+double core_rusage[MAX_NFS];
+
 #endif

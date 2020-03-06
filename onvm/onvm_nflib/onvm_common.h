@@ -330,7 +330,7 @@ struct onvm_nf {
 
         struct {
                 unsigned long last_update; 
-		unsigned long last_usage;
+                unsigned long last_usage;
 
                 // In the range [0, 1], indicates total CPU usage.
                 double cpu_time_proportion;
