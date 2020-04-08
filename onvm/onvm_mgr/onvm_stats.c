@@ -577,7 +577,14 @@ onvm_stats_display_nfs(unsigned difftime, uint8_t verbosity_level) {
                         cJSON *rusage_json;
                         cJSON_AddItemToObject(onvm_json_nf_stats[i], "Rusage", rusage_json = cJSON_CreateObject());
                         cJSON_AddNumberToObject(rusage_json, "CPU_Usage_Proportion", nfs[i].resource_usage.cpu_time_proportion);
-                            
+
+                        printf("%lf %lf\n", core_rusage[3], core_rusage[4]);
+                        cJSON *cpu_usage_json = cJSON_CreateArray();
+                        for (int i = 0; i < MAX_NFS; i++) {
+                                cJSON *num = cJSON_CreateNumber(core_rusage[i]);
+                                cJSON_AddItemToArray(cpu_usage_json, num);
+                        }
+                        cJSON_AddItemToObject(rusage_json, "Core_CPU_Usages", cpu_usage_json);
 
                         free(nf_label);
                         nf_label = NULL;
